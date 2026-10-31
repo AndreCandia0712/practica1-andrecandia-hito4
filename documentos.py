@@ -1,10 +1,13 @@
 import threading
+import queue
 import time
+import random
 
-documentos = []
+documentos = queue.Queue()
+
 for i in range(1, 25):
-    documento = f"Documento {i}"
-    documentos.append(documento)
+    tamano = random.randint(1, 5)
+    documentos.put((i, tamano))
 
 registro = {
     "Andre Candia": 0,
@@ -14,26 +17,29 @@ registro = {
 }
 
 candado = threading.Lock()
+procesados = []
 
 def trabajar(nombre):
-    while True:
-        candado.acquire()
-
-        if len(documentos) == 0:
-            candado.release()
+    for i in range(6):
+        try:
+            numero, tamano = documentos.get_nowait()
+        except queue.Empty:
             break
 
-        documento = documentos.pop(0)
-        registro[nombre] += 1
-        
-        print(f"[PROCESANDO] {nombre} ha tomado el {documento}")
+        print(f"[PROCESANDO] {nombre} ha tomado el Documento {numero} ({tamano} MB)")
 
-        candado.release()
-        time.sleep(0.1)
+        time.sleep(tamano * 0.1)
+
+        with candado:
+            registro[nombre] += 1
+            procesados.append(numero)
+
+        print(f"[COMPLETADO] {nombre} terminó el Documento {numero}")
+        documentos.task_done()
 
 hilos = []
-for i in range(4):
-    nombre = list(registro.keys())[i]
+
+for nombre in registro:
     hilo = threading.Thread(target=trabajar, args=(nombre,))
     hilos.append(hilo)
     hilo.start()
@@ -43,7 +49,17 @@ for hilo in hilos:
 
 print("\nResumen por trabajador:")
 total = 0
+
 for trabajador, cantidad in registro.items():
     print(f"{trabajador}: {cantidad} documentos")
     total += cantidad
-print(f"Total de documentos procesados: {total}")
+
+print(f"\nTotal de documentos procesados: {total}")
+print(f"Documentos únicos: {len(set(procesados))}")
+
+if total == 24 and len(set(procesados)) == 24 and all(
+    cantidad == 6 for cantidad in registro.values()
+):
+    print("VERIFICACIÓN EXITOSA: Cada trabajador procesó 6 documentos.")
+else:
+    print("ERROR: Revisar el procesamiento de documentos.")
